@@ -1,0 +1,7 @@
+# ugyanazok, mint az arc-platform-nal + a szerzodes-telepito
+circle-developer-controlled-wallets
+circle-smart-contract-platform
+web3
+python-dotenv
+requests
+flask

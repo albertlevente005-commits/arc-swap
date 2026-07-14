@@ -1,0 +1,17 @@
+# titkok - SOHA ne keruljon fel
+.env
+recovery/
+*.dat
+
+# futasi adatok
+adat/
+*.log
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# node (a fordito)
+node_modules/
