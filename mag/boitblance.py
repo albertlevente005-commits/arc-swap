@@ -7,10 +7,18 @@ import config
 from mag import circle_kliens, lanc, seged
 
 
+def _kell(cim, nev, env_nev):
+    if not cim:
+        raise RuntimeError(f"A(z) {nev} szerzodes cime nincs beallitva ezen a halozaton "
+                           f"({config.HALOZAT_NEV}). Add meg a .env-ben: {env_nev}=0x...")
+    return cim
+
+
 # ---------- AgentBond - kaucio ----------
 
 def kaucio_befizetes(ugynok_cim, usdc):
     """Az ugynok kauciot tesz le (approve + deposit)."""
+    _kell(config.AGENTBOND, "AgentBond", "AGENTBOND_CIM")
     egyseg = seged.egysegbe(usdc)
     circle_kliens.contract_tx(ugynok_cim, config.USDC, "approve(address,uint256)",
                               [config.AGENTBOND, egyseg], "USDC jovahagyas (kaucio)")
@@ -49,6 +57,7 @@ def slash(megrendelo_cim, obligation_id):
 
 def stream_nyitas(kuldo_cim, fogado_cim, usdc, idotartam_mp):
     """USDC folyik masodpercenkent a fogadonak. Visszaadja a stream ID-t."""
+    _kell(config.STREAMPAY, "StreamPay", "STREAMPAY_CIM")
     egyseg = seged.egysegbe(usdc)
     circle_kliens.contract_tx(kuldo_cim, config.USDC, "approve(address,uint256)",
                               [config.STREAMPAY, egyseg], "USDC jovahagyas (stream)")
@@ -79,6 +88,7 @@ def stream_leallitas(fel_cim, stream_id):
 
 def vallalas(vallalo_cim, ellenor_cim, kedvezmenyezett_cim, usdc, hatarido_mp, cel):
     """Az ugynok tetet tesz egy vallalasra. Visszaadja a commitment ID-t."""
+    _kell(config.COMMITSTAKE, "CommitStake", "COMMITSTAKE_CIM")
     egyseg = seged.egysegbe(usdc)
     hatarido = seged.retry(
         lambda: lanc.web3.eth.get_block("latest")["timestamp"], "blokk ido") + int(hatarido_mp)

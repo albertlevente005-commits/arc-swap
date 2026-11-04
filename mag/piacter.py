@@ -13,6 +13,15 @@ from mag import circle_kliens, lanc, seged
 NULLA_CIM = "0x0000000000000000000000000000000000000000"
 
 
+def _piacter_cim():
+    if not config.AGENTIC_COMMERCE:
+        raise RuntimeError(
+            f"Nincs ERC-8183 AgenticCommerce szerzodes beallitva ezen a halozaton "
+            f"({config.HALOZAT_NEV}). Mainneten telepitsd a sajatodat, es add meg: "
+            f"AGENTIC_COMMERCE_CIM=0x... a .env-ben.")
+    return config.AGENTIC_COMMERCE
+
+
 def identitas_regisztralas(ugynok_cim):
     """ERC-8004 regisztracio. Visszaadja az uj agent ID-t (NFT tokenId)."""
     tx = circle_kliens.contract_tx(
@@ -27,7 +36,7 @@ def job_kiiras(megrendelo_cim, ugynok_cim, leiras, lejarat_mp=None):
         lambda: lanc.web3.eth.get_block("latest")["timestamp"], "blokk ido") + (
         lejarat_mp or config.JOB_LEJARAT_MP)
     tx = circle_kliens.contract_tx(
-        megrendelo_cim, config.AGENTIC_COMMERCE,
+        megrendelo_cim, _piacter_cim(),
         "createJob(address,address,uint256,string,address)",
         [ugynok_cim, megrendelo_cim, str(lejarat), leiras, NULLA_CIM],
         "job kiiras")
@@ -37,7 +46,7 @@ def job_kiiras(megrendelo_cim, ugynok_cim, leiras, lejarat_mp=None):
 def dij_beallitas(ugynok_cim, job_id, usdc_osszeg):
     """Az ugynok beallitja a dijat (setBudget)."""
     return circle_kliens.contract_tx(
-        ugynok_cim, config.AGENTIC_COMMERCE, "setBudget(uint256,uint256,bytes)",
+        ugynok_cim, _piacter_cim(), "setBudget(uint256,uint256,bytes)",
         [str(job_id), seged.egysegbe(usdc_osszeg), "0x"], "dij beallitas")
 
 
@@ -46,9 +55,9 @@ def job_fizetes(megrendelo_cim, job_id, usdc_osszeg):
     egyseg = seged.egysegbe(usdc_osszeg)
     circle_kliens.contract_tx(
         megrendelo_cim, config.USDC, "approve(address,uint256)",
-        [config.AGENTIC_COMMERCE, egyseg], "USDC jovahagyas")
+        [_piacter_cim(), egyseg], "USDC jovahagyas")
     return circle_kliens.contract_tx(
-        megrendelo_cim, config.AGENTIC_COMMERCE, "fund(uint256,bytes)",
+        megrendelo_cim, _piacter_cim(), "fund(uint256,bytes)",
         [str(job_id), "0x"], "escrow feltoltes")
 
 
@@ -62,7 +71,7 @@ def munka_leadas(ugynok_cim, job_id, eredmeny_dict):
     """Az ugynok leadja a munkat (submit) az eredmeny hash-evel."""
     h = eredmeny_hash(eredmeny_dict)
     circle_kliens.contract_tx(
-        ugynok_cim, config.AGENTIC_COMMERCE, "submit(uint256,bytes32,bytes)",
+        ugynok_cim, _piacter_cim(), "submit(uint256,bytes32,bytes)",
         [str(job_id), h, "0x"], "munka leadas")
     return h
 
@@ -70,7 +79,7 @@ def munka_leadas(ugynok_cim, job_id, eredmeny_dict):
 def job_lezaras(megrendelo_cim, job_id, indok="deliverable-approved"):
     """A megrendelo lezarja a jobot -> az escrow kifizetodik az ugynoknek."""
     return circle_kliens.contract_tx(
-        megrendelo_cim, config.AGENTIC_COMMERCE, "complete(uint256,bytes32,bytes)",
+        megrendelo_cim, _piacter_cim(), "complete(uint256,bytes32,bytes)",
         [str(job_id), Web3.to_hex(Web3.keccak(text=indok)), "0x"], "lezaras + kifizetes")
 
 

@@ -1,0 +1,8 @@
+.env
+.env.*
+adat/
+node_modules/
+.git/
+__pycache__/
+.pytest_cache/
+tests/

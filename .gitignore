@@ -1,5 +1,7 @@
 # titkok - SOHA ne keruljon fel
 .env
+.env.*
+!.env.minta
 recovery/
 *.dat
 
@@ -10,8 +12,13 @@ adat/
 # python
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
 venv/
 
 # node (a fordito)
 node_modules/
+package-lock.json
+
+# generalt teszt-segedszerzodesek (node compile.js ujra legyartja)
+build/TestMocks.json

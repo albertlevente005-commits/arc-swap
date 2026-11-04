@@ -1,12 +1,32 @@
 """Kozos segedfuggvenyek: ujraprobalkozas, JSON fajlok, esemenynaplo, formazas."""
 
 import json
+import logging
 import os
 import sys
 import time
 import tempfile
+from logging.handlers import RotatingFileHandler
 
 import config
+
+# ---------- Naplozas (konzol + forgo fajl az adat/ mappaban) ----------
+
+naplo = logging.getLogger("arc-swap")
+if not naplo.handlers:
+    naplo.setLevel(logging.INFO)
+    _fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    try:
+        _fh = RotatingFileHandler(config.NAPLO_FAJL, maxBytes=5_000_000, backupCount=3,
+                                  encoding="utf-8")
+        _fh.setFormatter(_fmt)
+        naplo.addHandler(_fh)
+    except Exception:
+        pass
+    _sh = logging.StreamHandler(sys.stderr)
+    _sh.setFormatter(_fmt)
+    _sh.setLevel(logging.WARNING)
+    naplo.addHandler(_sh)
 
 # Ha CSENDES=True (pl. MCP szerver alatt), minden kiiras a stderr-re megy,
 # mert a stdout az MCP protokolle.
@@ -20,6 +40,8 @@ def kiir(szoveg, veg="\n"):
         celf.flush()
     except Exception:
         pass
+    if veg == "\n" and szoveg.strip():
+        naplo.info(szoveg.strip())
 
 
 def retry(fn, cimke="muvelet", probak=5, szunet=3):

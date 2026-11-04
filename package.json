@@ -1,0 +1,12 @@
+{
+  "name": "arc-swap-contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ValtoDEX AMM contract build for Arc",
+  "scripts": {
+    "compile": "node compile.js"
+  },
+  "devDependencies": {
+    "solc": "0.8.28"
+  }
+}

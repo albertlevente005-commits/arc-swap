@@ -1,0 +1,3 @@
+-r requirements.txt
+eth-tester[py-evm]>=0.13,<1
+pytest>=8,<10

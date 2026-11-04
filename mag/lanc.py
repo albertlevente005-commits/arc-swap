@@ -14,7 +14,23 @@ from mag import seged
 # A receipt-feldolgozas artalmatlan "MismatchedABI" figyelmeztetesei nem kellenek
 warnings.filterwarnings("ignore", message=".*MismatchedABI.*")
 
-web3 = Web3(Web3.HTTPProvider(config.RPC_URL))
+web3 = Web3(Web3.HTTPProvider(config.RPC_URL, request_kwargs={"timeout": 30}))
+
+_halozat_ok = False
+
+
+def halozat_ellenorzes():
+    """Ellenorzi, hogy az RPC tenyleg a beallitott halozat (chain id). Hibat dob, ha nem."""
+    global _halozat_ok
+    if _halozat_ok:
+        return True
+    lanc_id = seged.retry(lambda: web3.eth.chain_id, "chain id", probak=3)
+    if int(lanc_id) != int(config.CHAIN_ID):
+        raise RuntimeError(
+            f"Az RPC ({config.RPC_URL}) chain id-ja {lanc_id}, de a beallitott halozat "
+            f"{config.HALOZAT_NEV} ({config.CHAIN_ID}). Ellenorizd az ARC_HALOZAT / ARC_RPC_URL erteket!")
+    _halozat_ok = True
+    return True
 
 JOB_STATUSZ = ["Nyitott", "Feltoltve", "Leadva", "Kesz", "Elutasitva", "Lejart"]
 # ERC-8183 statusz kodok: 0=Open 1=Funded 2=Submitted 3=Completed 4=Rejected 5=Expired
@@ -97,6 +113,9 @@ COMMIT_ABI = [
 # ---------- Szerzodes objektumok ----------
 
 def _c(cim, abi):
+    """Szerzodes-objektum, vagy None, ha a cim nincs beallitva ezen a halozaton."""
+    if not cim:
+        return None
     return web3.eth.contract(address=Web3.to_checksum_address(cim), abi=abi)
 
 
@@ -108,6 +127,13 @@ stream = _c(config.STREAMPAY, STREAM_ABI)
 commit = _c(config.COMMITSTAKE, COMMIT_ABI)
 
 
+def _kell(obj, nev, env_nev):
+    if obj is None:
+        raise RuntimeError(f"A(z) {nev} szerzodes cime nincs beallitva ezen a halozaton "
+                           f"({config.HALOZAT_NEV}). Add meg a .env-ben: {env_nev}=0x...")
+    return obj
+
+
 # ---------- Olvaso fuggvenyek ----------
 
 def blokkszam():
@@ -116,6 +142,7 @@ def blokkszam():
 
 def job(job_id):
     """Egy job adatai szotarkent (vagy None, ha nem letezik)."""
+    _kell(jobok, "AgenticCommerce (ERC-8183)", "AGENTIC_COMMERCE_CIM")
     try:
         j = seged.retry(lambda: jobok.functions.getJob(int(job_id)).call(), "getJob", probak=3)
     except Exception:
@@ -131,6 +158,7 @@ def job(job_id):
 
 def jobok_cimre(ugynok_cim, kezdo_blokk, veg_blokk, darab=9000):
     """JobCreated esemenyek, ahol a provider a megadott cim. [(job_id, megrendelo), ...]"""
+    _kell(jobok, "AgenticCommerce (ERC-8183)", "AGENTIC_COMMERCE_CIM")
     cim = Web3.to_checksum_address(ugynok_cim)
     talalt = []
     frm = kezdo_blokk
@@ -150,6 +178,7 @@ def jobok_cimre(ugynok_cim, kezdo_blokk, veg_blokk, darab=9000):
 
 def job_id_tx_hashbol(tx_hash):
     """A createJob tranzakciobol kiolvassa a job ID-t."""
+    _kell(jobok, "AgenticCommerce (ERC-8183)", "AGENTIC_COMMERCE_CIM")
     receipt = seged.retry(lambda: web3.eth.get_transaction_receipt(tx_hash), "receipt")
     logs = jobok.events.JobCreated().process_receipt(receipt)
     if not logs:
@@ -186,6 +215,8 @@ def reputacio(agent_id):
 def kaucio_allapot(cim):
     """{'teljes': x, 'lekotve': y, 'szabad': z} USDC-ben."""
     a = Web3.to_checksum_address(cim)
+    if bond is None:
+        return {"teljes": 0, "lekotve": 0, "szabad": 0}
     try:
         teljes = bond.functions.bonded(a).call()
         lekotve = bond.functions.locked(a).call()
@@ -196,6 +227,8 @@ def kaucio_allapot(cim):
 
 
 def obligation_darab():
+    if bond is None:
+        return 0
     try:
         return int(bond.functions.obligationCount().call())
     except Exception:
@@ -203,6 +236,8 @@ def obligation_darab():
 
 
 def obligation(oid):
+    if bond is None:
+        return None
     try:
         o = bond.functions.obligations(int(oid)).call()
         return {"ugynok": o[0], "megbizo": o[1], "osszeg": seged.usdc_be(o[2]),
@@ -212,6 +247,8 @@ def obligation(oid):
 
 
 def stream_darab():
+    if stream is None:
+        return 0
     try:
         return int(stream.functions.streamCount().call())
     except Exception:
@@ -219,6 +256,8 @@ def stream_darab():
 
 
 def stream_adat(sid):
+    if stream is None:
+        return None
     try:
         s = stream.functions.streams(int(sid)).call()
         kiveheto = stream.functions.recipientBalance(int(sid)).call()
@@ -231,6 +270,8 @@ def stream_adat(sid):
 
 
 def commitment_darab():
+    if commit is None:
+        return 0
     try:
         return int(commit.functions.commitmentCount().call())
     except Exception:
@@ -238,6 +279,8 @@ def commitment_darab():
 
 
 def commitment(cid):
+    if commit is None:
+        return None
     try:
         c = commit.functions.commitments(int(cid)).call()
         return {"vallalo": c[0], "ellenor": c[1], "kedvezmenyezett": c[2],

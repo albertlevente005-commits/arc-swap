@@ -27,7 +27,7 @@ from mag import boitblance, circle_kliens, lanc, munkak, piacter, regiszter, seg
 
 
 def parancssor():
-    p = argparse.ArgumentParser(description="Autonom ugynok daemon (Arc Testnet)")
+    p = argparse.ArgumentParser(description="Autonom ugynok daemon (Arc)")
     p.add_argument("--nev", required=True, help="Az ugynok neve (pl. Adat-Ugynok)")
     p.add_argument("--skillek", required=True,
                    help="Vesszovel: " + ",".join(munkak.SKILLEK))
@@ -106,7 +106,10 @@ def main():
     print("=" * 60)
     print(f"  UGYNOK INDUL: {nev}")
     print(f"  Skillek: {', '.join(skillek)}")
+    print(f"  Halozat: {config.HALOZAT_NEV}")
     print("=" * 60)
+    config.kotelezo("CIRCLE_API_KEY", "CIRCLE_ENTITY_SECRET", "MEGRENDELO_CIM", "AGENTIC_COMMERCE")
+    lanc.halozat_ellenorzes()
 
     # ----- 1. Onallo felkeszules -----
     tarca = tarca_biztositasa(nev, arg.tarca)

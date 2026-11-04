@@ -20,8 +20,9 @@ def kliens():
     if _kliens is None:
         if not config.CIRCLE_API_KEY or not config.CIRCLE_ENTITY_SECRET:
             raise RuntimeError(
-                "Hianyzik a CIRCLE_API_KEY / CIRCLE_ENTITY_SECRET. "
-                "Ellenorizd a .env fajlt (erc8004-quickstart mappaban is lehet).")
+                "Hianyzik a CIRCLE_API_KEY / CIRCLE_ENTITY_SECRET a .env fajlbol. "
+                + ("Mainneten a Circle Console LIVE kornyezetenek kulcsa kell."
+                   if config.MAINNET else "Testneten a TEST kornyezet kulcsa kell."))
         from circle.web3 import developer_controlled_wallets, utils
         _kliens = utils.init_developer_controlled_wallets_client(
             api_key=config.CIRCLE_API_KEY,
@@ -42,7 +43,9 @@ def _dcw():
 
 def osszes_tarca():
     kliens()
-    resp = seged.retry(lambda: _wallets_api.get_wallets(), "tarcak lekerese")
+    dcw = _dcw()
+    resp = seged.retry(lambda: _wallets_api.get_wallets(
+        blockchain=dcw.Blockchain(config.LANC)), "tarcak lekerese")
     tarcak = []
     for w in resp.data.wallets or []:
         tarcak.append(getattr(w, "actual_instance", w))
@@ -53,10 +56,10 @@ def tarca_cim_alapjan(cim):
     for t in osszes_tarca():
         if t.address.lower() == cim.lower():
             return t
-    raise RuntimeError(f"Nem talalhato tarca ezzel a cimmel: {cim}")
+    raise RuntimeError(f"Nem talalhato Circle tarca ezzel a cimmel a(z) {config.LANC} halozaton: {cim}")
 
 
-def tarca_letrehozas(megnevezes="arc-platform tarca"):
+def tarca_letrehozas(megnevezes="arc-swap tarca"):
     """Uj tarca a mar meglevo wallet set-ben (ha nincs, ujat hoz letre)."""
     dcw = _dcw()
     set_id = None
@@ -66,7 +69,7 @@ def tarca_letrehozas(megnevezes="arc-platform tarca"):
             break
     if not set_id:
         ws = seged.retry(lambda: _sets_api.create_wallet_set(
-            dcw.CreateWalletSetRequest.from_dict({"name": "Arc Platform"})),
+            dcw.CreateWalletSetRequest.from_dict({"name": f"Arc Swap ({config.HALOZAT})"})),
             "wallet set letrehozas")
         set_id = ws.data.wallet_set.actual_instance.id
     resp = seged.retry(lambda: _wallets_api.create_wallet(
