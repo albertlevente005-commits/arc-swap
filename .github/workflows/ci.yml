@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Compile contracts (solc 0.8.28)
+        run: |
+          npm install
+          node compile.js
+          git diff --exit-code -- build/ValtoDEX.json || (echo "build/ValtoDEX.json elavult - futtasd: node compile.js, es commitold" && exit 1)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -r requirements-dev.txt
+
+      - name: Tests (local EVM)
+        env:
+          ARC_HALOZAT: testnet
+        run: python -m pytest tests -q -p no:warnings
+
+      - name: Import smoke (mainnet config)
+        env:
+          ARC_HALOZAT: mainnet
+        run: python -c "import config, valto_config, valto_app; print(config.osszefoglalo())"

@@ -12,9 +12,13 @@ Job formatum (a megrendelo/vezerlopult irja ki):
 Dijazas: osszeg + 0,5 USDC szolgaltatasi dij.
 FIGYELEM: csak be=USDC iranyt vallal (a keszlete USDC-ben van).
 
-Futtatas (cmd, a projektmappabol):
+Futtatas (a projektmappabol):
     python valto_ugynok.py
 Leallitas: Ctrl+C
+
+Mainneten CSAK akkor indul, ha a .env-ben meg van adva a sajat ERC-8183 piacter
+(AGENTIC_COMMERCE_CIM) es az AgentBond (AGENTBOND_CIM) cime - a referencia-
+implementaciok csak testneten leteznek.
 """
 
 import sys
@@ -31,6 +35,7 @@ NEV = "Valto-Ugynok"
 SKILLEK = ["valtas"]
 SZOLGALTATASI_DIJ = 0.5   # USDC / job
 MIN_KESZLET = 2.0         # ennyi USDC keszlet alatt nem vallal jobot
+MAX_VALTAS_USDC = float(__import__("os").getenv("UGYNOK_MAX_VALTAS_USDC", "100"))  # jobonkenti plafon
 
 dex = lanc.web3.eth.contract(
     address=Web3.to_checksum_address(vc.DEX_CIM or "0x" + "0" * 40), abi=vc.DEX_ABI)
@@ -44,6 +49,18 @@ def pool_kereses(be, ki):
         if be in cimek and ki in cimek:
             return i, cimek[be]
     return None
+
+
+def _kapott_osszeg(swap_tx, pool_id, alap):
+    """A Swapped esemenybol kiolvassa a TENYLEGESEN kapott osszeget (nem a becsultet)."""
+    try:
+        receipt = seged.retry(lambda: lanc.web3.eth.get_transaction_receipt(swap_tx), "receipt")
+        for lg in dex.events.Swapped().process_receipt(receipt):
+            if int(lg["args"]["id"]) == int(pool_id):
+                return int(lg["args"]["amountOut"])
+    except Exception as e:
+        seged.esemeny(NEV, f"FIGYELEM: a Swapped esemeny nem olvashato ({e}), a becsult osszeget kuldom")
+    return int(alap)
 
 
 def valtas_elvegzese(tarca, megrendelo_cim, p):
@@ -61,10 +78,13 @@ def valtas_elvegzese(tarca, megrendelo_cim, p):
         raise RuntimeError(f"nincs {be}/{ki} pool a DEX-en")
     pool_id, be_cim = talalat
 
+    if osszeg <= 0 or osszeg > MAX_VALTAS_USDC:
+        raise RuntimeError(f"az osszeg 0 es {MAX_VALTAS_USDC} USDC kozott lehet")
     egyseg_be = vc.egysegbe(be, osszeg)
     ki_egyseg = dex.functions.getQuote(
         pool_id, Web3.to_checksum_address(be_cim), int(egyseg_be)).call()
-    min_ki = int(ki_egyseg * 99 // 100)
+    min_ki = int(ki_egyseg) * (10_000 - config.ALAP_SLIPPAGE_BPS) // 10_000
+    hatarido = str(int(time.time()) + config.TX_HATARIDO_MP)
 
     seged.esemeny(NEV, f"Valtas: {osszeg} {be} -> ~{vc.egysegbol(ki, ki_egyseg)} {ki} "
                        f"(pool #{pool_id})")
@@ -72,10 +92,11 @@ def valtas_elvegzese(tarca, megrendelo_cim, p):
                               "approve(address,uint256)", [vc.DEX_CIM, egyseg_be],
                               f"{be} jovahagyas")
     swap_tx = circle_kliens.contract_tx(
-        tarca.address, vc.DEX_CIM, "swap(uint256,address,uint256,uint256)",
-        [str(pool_id), vc.TOKENEK[be]["cim"], egyseg_be, str(min_ki)], "DEX valtas")
+        tarca.address, vc.DEX_CIM, "swap(uint256,address,uint256,uint256,uint256)",
+        [str(pool_id), vc.TOKENEK[be]["cim"], egyseg_be, str(min_ki), hatarido], "DEX valtas")
 
-    # a kapott tokent elkuldjuk a megrendelonek
+    # a TENYLEGESEN kapott tokent elkuldjuk a megrendelonek
+    ki_egyseg = _kapott_osszeg(swap_tx, pool_id, min_ki)
     kuldes_tx = circle_kliens.contract_tx(
         tarca.address, vc.TOKENEK[ki]["cim"], "transfer(address,uint256)",
         [megrendelo_cim, str(ki_egyseg)], f"{ki} kuldese a megrendelonek")
@@ -91,10 +112,14 @@ def valtas_elvegzese(tarca, megrendelo_cim, p):
 
 def main():
     print("=" * 60)
-    print(f"  VALTO-UGYNOK INDUL (skill: valtas)")
+    print("  VALTO-UGYNOK INDUL (skill: valtas)")
     print("=" * 60)
+    print(f"  Halozat: {config.HALOZAT_NEV}")
+    config.kotelezo("CIRCLE_API_KEY", "CIRCLE_ENTITY_SECRET", "MEGRENDELO_CIM",
+                    "AGENTIC_COMMERCE", "AGENTBOND")
+    lanc.halozat_ellenorzes()
     if not vc.DEX_CIM:
-        print("HIBA: nincs telepitve a ValtoDEX (futtasd: python telepit.py)")
+        print("HIBA: nincs telepitve a ValtoDEX ezen a halozaton (futtasd: python telepit.py)")
         sys.exit(1)
 
     tarca = ugynok.tarca_biztositasa(NEV, None)

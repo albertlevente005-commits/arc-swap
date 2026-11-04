@@ -1,44 +1,50 @@
-# ARC Váltó — saját mini-DEX az Arc Testneten
+# ARC Váltó — saját AMM DEX az Arc hálózaton (mainnet-kész)
 
 Saját AMM (automata árjegyző) váltó **USDC · EURC · cirBTC** párokkal, Uniswap-elven
 (x·y=k, 0,3% díj), plusz egy **Váltó-Ügynök**, aki a piactéren job-alapon vált.
+
+Ez a verzió az **Arc mainnetre** (éles) van felkészítve; a részletes élesítési
+lépések és a biztonsági változtatások a [`MAINNET.md`](MAINNET.md)-ben vannak.
+A hálózatot a `.env` `ARC_HALOZAT` sora választja (`mainnet` vagy `testnet`).
 
 ## Részei
 
 | Fájl | Mire való |
 |---|---|
-| `contracts/ValtoDEX.sol` | Az AMM okosszerződés (pool + likviditás + swap) |
-| `build/ValtoDEX.json` | Lefordítva, telepítésre kész (ABI + bytecode) |
-| `telepit.py` | Telepíti a DEX-et az Arc-ra (Circle SCP, a 0x774E... tárcáról) |
-| `pool_feltoltes.py` | Létrehozza a poolokat + beteszi a kezdő likviditást |
+| `contracts/ValtoDEX.sol` | Az AMM okosszerződés (pool + likviditás + swap, pause, tulajdonos) |
+| `build/ValtoDEX.json` | Lefordítva, telepítésre kész (ABI + bytecode + metadata) |
+| `compile.js` | Fordítás: `npm install && node compile.js` |
+| `telepit.py` | Telepíti a DEX-et (Circle SCP, a `TELEPITO_CIM` tárcáról, az lesz a tulajdonos) |
+| `pool_feltoltes.py` | Létrehozza a poolokat + beteszi a kezdő likviditást (piaci ár ellenőrzéssel) |
+| `dex_admin.py` | Tulajdonosi műveletek: pause/unpause, pool, tulajdonos-átadás |
 | `valto_app.py` | Webes váltó felület — http://127.0.0.1:8060 |
 | `valto_ugynok.py` | Piactéri ügynök: `[skill:valtas]` jobokat vált a DEX-en |
-| `valto_config.py` | Tokenek, poolok, címek egy helyen |
+| `config.py`, `valto_config.py` | Hálózat, tokenek, poolok, címek egy helyen |
+| `tests/` | pytest tesztek helyi EVM-en (`python -m pytest tests`) |
 
-A közös alapokat (Circle kliens, lánc-olvasó, napló) az `arc-platform` mappából
-használja — azt ne töröld/mozgasd el.
+## Beüzemelés (sorban)
 
-## Beüzemelés (cmd, sorban)
-
+**0. Beállítás**
 ```
-cd C:\Users\Panoskir\Cowork\ARC2026\arc-valto
+pip install -r requirements.txt
+npm install && node compile.js
+copy .env.minta .env        (Linux/mac: cp .env.minta .env)
 ```
+A `.env`-ben: `ARC_HALOZAT`, Circle kulcsok (mainneten LIVE!), `TELEPITO_CIM`,
+`MEGRENDELO_CIM`, `VALTO_ADMIN_TOKEN`, és a kezdő likviditás (`POOL_USDC_EURC=...`).
 
-**0. Tokenek a megrendelő tárcára** — a kezdő likviditáshoz kell:
-- USDC és **EURC**: https://faucet.circle.com → Arc Testnet → cím:
-  `0xfd38e25aca03e65d4b203b329733cf7e9c1a414b`
-- cirBTC: Circle Console faucet (https://console.circle.com/faucet), vagy
-  küldd át a MetaMask tárcádból. (Ha nincs, a cirBTC pool kimarad — nem gond.)
-
-**1. DEX telepítése** (a telepítő tárcán legyen ~1-2 USDC gázra):
+**1. DEX telepítése** (a telepítő tárcán legyen ~1 USDC gázra):
 ```
 python telepit.py
 ```
+Mainneten be kell gépelni, hogy `MAINNET`. A cím a `valto_cimek.mainnet.json`-ba kerül — commitold.
 
-**2. Poolok + kezdő likviditás** (20 USDC + 18,5 EURC; 10 USDC + 0,0001 cirBTC):
+**2. Poolok + kezdő likviditás:**
 ```
 python pool_feltoltes.py
 ```
+Az első betevés aránya = a pool kezdő ára. A script összeveti a piaci árfolyammal, és
+2% feletti eltérésnél megáll (`--kenyszerit` felülírja).
 
 **3. Webes váltó:**
 ```
@@ -47,41 +53,47 @@ python valto_app.py
 → http://127.0.0.1:8060
 
 Két mód a felületen:
-- **Circle tárca** — a megrendelő tárcával vált, gombnyomásra (szerver írja alá)
-- **MetaMask** — a saját böngészős tárcáddal váltasz; a gomb magától
-  csatlakoztat és beállítja az Arc Testnet hálózatot. Így a MetaMask-on lévő
-  USDC/EURC/cirBTC készletedet is tudod váltani, és likviditást is tehetsz be.
+- **MetaMask** (alap) — a saját böngészős tárcáddal váltasz; a gomb magától csatlakoztat és
+  beállítja az Arc hálózatot. Likviditást is tehetsz be / vehetsz ki.
+- **Circle** — a szerver a `MEGRENDELO_CIM` tárcával vált. Csak akkor elérhető, ha a `.env`-ben
+  van `VALTO_ADMIN_TOKEN`, és a felület bekéri a tokent. Idegen gépről ne engedd!
 
-**4. Váltó-Ügynök a piactéren** (opcionális, de ez a menő rész):
+**4. Váltó-Ügynök a piactéren** (opcionális):
 ```
 python valto_ugynok.py
 ```
-Az ügynök első induláskor saját tárcát + ERC-8004 identitást csinál magának,
-kauciót tesz le, és onnantól figyeli a láncot. Küldj neki USDC készletet
-(a címét kiírja induláskor), abból vált.
-
-Job kiírása a piactéren (másik cmd ablakban, az arc-platform mappából):
-```
-python megrendelo.py --skill valtas --parameter "be=USDC ki=EURC osszeg=5" --max 6
-```
-A `--max` legyen legalább `osszeg + 0,5` (ennyi az ügynök díja).
-Az ügynök átváltja a DEX-en, az EURC-t elküldi a megrendelőnek, a hash-t
-leadja, a megrendelő ellenőriz, fizet és értékel — a teljes kör a láncon.
+Mainneten csak akkor indul, ha a `.env`-ben meg van adva a saját ERC-8183 piactér
+(`AGENTIC_COMMERCE_CIM`) és AgentBond (`AGENTBOND_CIM`) címe — a Circle-féle referencia
+csak testneten létezik. Az ügynök a **ténylegesen** kapott összeget küldi a megrendelőnek,
+és jobonként legfeljebb `UGYNOK_MAX_VALTAS_USDC` (alap 100) USDC-t vált.
 
 > A Váltó-Ügynök csak `be=USDC` irányt vállal (a készlete USDC-ben van).
 
+## Üzemeltetés
+
+```
+python dex_admin.py allapot
+python dex_admin.py pause        # swap + betevés leáll; a likviditás-kivétel mindig működik
+python dex_admin.py unpause
+```
+Egészség: `GET /healthz`. Napló: `adat/valto.<halozat>.log`.
+
 ## Hogyan áraz az AMM?
 
-A pool két készlete szorzatának állandónak kell maradnia (x·y=k).
-Minél nagyobbat váltasz a pool méretéhez képest, annyival rosszabb az árfolyam
-(csúszás). A 0,3% díj a poolban marad — aki likviditást tett be, annak dolgozik.
+A pool két készlete szorzatának állandónak kell maradnia (x·y=k). Minél nagyobbat váltasz a
+pool méretéhez képest, annyival rosszabb az árfolyam (csúszás). A 0,3% díj a poolban marad —
+aki likviditást tett be, annak dolgozik. A felületen állítható a max. csúszás (alap 0,5%), és
+a lánc csak a megadott határidőn (alap 10 perc) belül hajtja végre a tranzakciót.
 
 ## Hibaelhárítás
 
-- **„Nincs valto_cimek.json"** → futtasd a `telepit.py`-t.
-- **„empty pool"** → futtasd a `pool_feltoltes.py`-t (és legyen elég token).
-- **MetaMask nem vált hálózatot** → fogadd el a felugró ablakokat; ha kézzel
-  kell: lánc ID `5042002`, RPC `https://rpc.testnet.arc.network`.
-- **A telepítés elakad** → a telepítő tárcán (`0x774E...`) legyen USDC a gázra.
+- **„Nincs valto_cimek.mainnet.json"** → futtasd a `telepit.py`-t.
+- **„chain id ... != ..."** → az `ARC_HALOZAT` és az `ARC_RPC_URL` nem ugyanaz a hálózat.
+- **„EmptyPool"** → futtasd a `pool_feltoltes.py`-t (és legyen elég token).
+- **„Slippage"** → az ár elmozdult; emeld a csúszást vagy próbáld újra.
+- **„IsPaused"** → a tulajdonos szünetelteti a DEX-et (`dex_admin.py unpause`).
+- **MetaMask nem vált hálózatot** → fogadd el a felugró ablakokat; kézzel: lánc ID `5042`,
+  RPC `https://rpc.mainnet.arc.io`, explorer `https://explorer.arc.io`.
+- **Circle-mód 403** → rossz vagy hiányzó `VALTO_ADMIN_TOKEN`.
 
-> Teszthálózati demó, nem auditált — éles használatra nem való.
+> Nem auditált kód — korlátozott összeggel indulj, és tartsd kéznél a pause-t.

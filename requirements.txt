@@ -1,7 +1,8 @@
-# ugyanazok, mint az arc-platform-nal + a szerzodes-telepito
-circle-developer-controlled-wallets
-circle-smart-contract-platform
-web3
-python-dotenv
-requests
-flask
+# Futtatasi fuggosegek (python >= 3.10)
+circle-developer-controlled-wallets>=9.6.0,<10
+circle-smart-contract-platform>=9.6.0,<10
+web3>=7.6,<8
+python-dotenv>=1.0,<2
+requests>=2.32,<3
+flask>=3.0,<4
+waitress>=3.0,<4
